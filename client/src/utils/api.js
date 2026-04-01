@@ -1,5 +1,4 @@
-const BASE = '/api';
-
+const BASE = import.meta.env.VITE_API_BASE || '/api';
 export async function apiFetch(path, options = {}) {
   const token = localStorage.getItem('wenjing_token');
   const headers = { ...options.headers };
