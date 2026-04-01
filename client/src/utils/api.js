@@ -1,4 +1,6 @@
+// client/src/utils/api.js
 const BASE = import.meta.env.VITE_API_BASE || '/api';
+
 export async function apiFetch(path, options = {}) {
   const token = localStorage.getItem('wenjing_token');
   const headers = { ...options.headers };
@@ -22,7 +24,12 @@ export async function apiFetch(path, options = {}) {
 
 export const api = {
   get: (path) => apiFetch(path),
-  post: (path, body) => apiFetch(path, { method: 'POST', body: body instanceof FormData ? body : JSON.stringify(body) }),
+  post: (path, body) => apiFetch(path, {
+    method: 'POST',
+    body: body instanceof FormData ? body : JSON.stringify(body),
+  }),
   put: (path, body) => apiFetch(path, { method: 'PUT', body: JSON.stringify(body) }),
   delete: (path) => apiFetch(path, { method: 'DELETE' }),
 };
+
+export default api;
