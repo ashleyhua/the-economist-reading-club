@@ -2,10 +2,13 @@
   "name": "reading-club-app",
   "version": "1.0.0",
   "main": "server/index.js",
+  "homepage": "https://ashleyhua.github.io/the-economist-reading-club",
   "scripts": {
     "start": "node server/index.js",
     "dev": "nodemon server/index.js",
-    "build": "cd client && npm run build"
+    "build": "cd client && npm install && npm run build",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d client/build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.20.0",
@@ -20,11 +23,5 @@
     "pdf-parse": "1.1.1",
     "pg": "^8.7.3",
     "uuid": "^9.0.0"
-  },
-  "homepage": "https://ashleyhua.github.io/the-economist-reading-club",
-  "scripts": {
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d build"
   }
-  
 }
