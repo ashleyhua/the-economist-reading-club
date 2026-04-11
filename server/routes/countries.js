@@ -4,17 +4,48 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { pool } = require('../db');
 const { subscriberAuth, adminAuth } = require('../middleware');
 
-function repairJSON(raw) {
+function extractAndRepairJSON(raw) {
+  // Strip markdown fences
   let text = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-  // Find the outermost { } using brace counting
-  let depth = 0, start = -1;
+
+  // Find start of JSON object
+  const start = text.indexOf('{');
+  if (start === -1) throw new Error('No JSON object found in response');
+  text = text.slice(start);
+
+  // Fix actual newlines and tabs inside the text (they break JSON string values)
+  // Process character by character to fix newlines inside strings
+  let result = '';
+  let inString = false;
+  let escaped = false;
+
   for (let i = 0; i < text.length; i++) {
-    if (text[i] === '{' && depth++ === 0) start = i;
-    if (text[i] === '}' && --depth === 0 && start !== -1) {
-      return text.slice(start, i + 1);
+    const ch = text[i];
+    if (escaped) {
+      result += ch;
+      escaped = false;
+      continue;
     }
+    if (ch === '\\') {
+      result += ch;
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      result += ch;
+      continue;
+    }
+    if (inString) {
+      // Inside a string, replace raw newlines/tabs with escaped versions
+      if (ch === '\n') { result += '\\n'; continue; }
+      if (ch === '\r') { result += '\\r'; continue; }
+      if (ch === '\t') { result += '\\t'; continue; }
+    }
+    result += ch;
   }
-  return text;
+
+  return result;
 }
 
 router.get('/list', adminAuth, async (req, res) => {
@@ -37,16 +68,14 @@ router.post('/generate/:country', adminAuth, async (req, res) => {
   const country = decodeURIComponent(req.params.country);
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const prompt = `You are a geopolitical analyst creating an educational country profile for Chinese high school students. Generate a profile for: ${country} (2025-2026 context).
 
-CRITICAL JSON rules:
-- Return ONLY valid JSON, no markdown, no code fences
-- No actual newlines inside string values — use the two characters \\n instead
-- No unescaped double quotes inside strings — use Chinese quotes 「」instead
-- Keep all string values SHORT to avoid JSON errors
+    const prompt = `Create an educational country profile for ${country} for Chinese high school students (2025-2026 context).
 
-Return this exact structure:
-{"snapshot":"One sentence in Chinese about ${country} current situation","current_issues":[{"title":"Issue 1 in Chinese","description":"2 sentences in Chinese"},{"title":"Issue 2 in Chinese","description":"2 sentences in Chinese"},{"title":"Issue 3 in Chinese","description":"2 sentences in Chinese"}],"political":{"system":"Political system in Chinese (1 sentence)","key_actors":["Actor 1 in Chinese","Actor 2 in Chinese","Actor 3 in Chinese"],"foreign_relations":[{"country":"Country name","status":"ally","description":"1 sentence in Chinese"},{"country":"Country name","status":"neutral","description":"1 sentence in Chinese"},{"country":"Country name","status":"tense","description":"1 sentence in Chinese"},{"country":"Country name","status":"hostile","description":"1 sentence in Chinese"}]},"economic":{"gdp":"GDP figure","inflation":"Inflation rate","key_export":"Main export","story":"2 sentences in Chinese"},"historical":[{"year":"Year","event":"Event in Chinese","significance":"1 sentence in Chinese"},{"year":"Year","event":"Event in Chinese","significance":"1 sentence in Chinese"},{"year":"Year","event":"Event in Chinese","significance":"1 sentence in Chinese"}],"concepts":[{"term_en":"English term","term_zh":"Chinese term","explanation":"1 sentence in Chinese"},{"term_en":"English term","term_zh":"Chinese term","explanation":"1 sentence in Chinese"},{"term_en":"English term","term_zh":"Chinese term","explanation":"1 sentence in Chinese"}]}`;
+Return ONLY a JSON object. No markdown. No code fences. No explanations before or after.
+Every string value must be on a single line with no line breaks.
+Use 「」for quotes within Chinese text, never use " inside string values.
+
+{"snapshot":"<one sentence in Chinese>","current_issues":[{"title":"<Chinese>","description":"<Chinese>"},{"title":"<Chinese>","description":"<Chinese>"},{"title":"<Chinese>","description":"<Chinese>"}],"political":{"system":"<Chinese>","key_actors":["<Chinese>","<Chinese>","<Chinese>"],"foreign_relations":[{"country":"<English>","status":"ally","description":"<Chinese>"},{"country":"<English>","status":"neutral","description":"<Chinese>"},{"country":"<English>","status":"tense","description":"<Chinese>"},{"country":"<English>","status":"hostile","description":"<Chinese>"}]},"economic":{"gdp":"<value>","inflation":"<value>","key_export":"<value>","story":"<Chinese>"},"historical":[{"year":"<year>","event":"<Chinese>","significance":"<Chinese>"},{"year":"<year>","event":"<Chinese>","significance":"<Chinese>"},{"year":"<year>","event":"<Chinese>","significance":"<Chinese>"}],"concepts":[{"term_en":"<English>","term_zh":"<Chinese>","explanation":"<Chinese>"},{"term_en":"<English>","term_zh":"<Chinese>","explanation":"<Chinese>"},{"term_en":"<English>","term_zh":"<Chinese>","explanation":"<Chinese>"}]}`;
 
     const msg = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
@@ -55,10 +84,10 @@ Return this exact structure:
     });
 
     const raw = msg.content[0].text;
-    console.log(`Profile for ${country}, raw length: ${raw.length}`);
+    console.log(`${country} raw response length: ${raw.length}`);
 
-    const cleaned = repairJSON(raw);
-    const profile = JSON.parse(cleaned);
+    const repaired = extractAndRepairJSON(raw);
+    const profile = JSON.parse(repaired);
 
     await pool.query(
       `INSERT INTO country_profiles (country_name, profile_data, updated_at)
@@ -69,7 +98,7 @@ Return this exact structure:
 
     res.json({ profile });
   } catch (err) {
-    console.error(`Profile gen error for ${country}:`, err.message);
+    console.error(`Profile error for ${country}:`, err.message);
     res.status(500).json({ error: err.message });
   }
 });
