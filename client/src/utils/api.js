@@ -22,6 +22,7 @@ export async function apiFetch(path, options = {}) {
   return data;
 }
 
+// Do NOT add /api prefix here — BASE already contains it
 export const api = {
   get: (path) => apiFetch(path),
   post: (path, body) => apiFetch(path, {

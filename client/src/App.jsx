@@ -14,6 +14,7 @@ import NewPost from './pages/admin/NewPost';
 import AdminPosts from './pages/admin/AdminPosts';
 import AdminUsers from './pages/admin/AdminUsers';
 import EditPost from './pages/admin/EditPost';
+import CountryProfiles from './pages/admin/CountryProfiles';
 import './styles/global.css';
 
 function RequireAuth({ children }) {
@@ -50,6 +51,7 @@ function AppRoutes() {
           <Route path="posts" element={<AdminPosts />} />
           <Route path="edit/:id" element={<EditPost />} />
           <Route path="users" element={<AdminUsers />} />
+          <Route path="country-profiles" element={<CountryProfiles />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

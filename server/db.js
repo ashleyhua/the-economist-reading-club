@@ -33,11 +33,9 @@ async function initDB() {
   let client;
   try {
     client = await db.connect();
-    console.log('✓ Database connected\n');
+    console.log('Connected\n');
   } catch (err) {
-    console.error('\n Connection failed.');
-    console.error('   Code:', err.code);
-    console.error('   Message:', err.message);
+    console.error('\n Connection failed:', err.message);
     throw err;
   } finally {
     if (client) client.release();
@@ -81,9 +79,13 @@ async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW(),
       UNIQUE(user_id, word)
     );
+    CREATE TABLE IF NOT EXISTS country_profiles (
+      country_name TEXT PRIMARY KEY,
+      profile_data TEXT NOT NULL,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
   `);
 
-  // Migrations
   await db.query(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS pdf_text TEXT;`);
   await db.query(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS pdf_url TEXT;`);
   await db.query(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS word_annotations TEXT;`);
@@ -95,9 +97,9 @@ async function initDB() {
       `INSERT INTO users (id, email, password_hash, name, role, subscribed_until) VALUES ($1,$2,$3,$4,$5,$6)`,
       [uuidv4(), 'admin@readingclub.app', hash, 'Admin', 'admin', '2099-12-31']
     );
-    console.log('✓ Admin account created: admin@readingclub.app / admin123');
+    console.log('Admin account created');
   }
-  console.log('✓ Database ready\n');
+  console.log('Database ready\n');
 }
 
 module.exports = { get pool() { return getPool(); }, initDB };
