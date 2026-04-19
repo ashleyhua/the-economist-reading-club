@@ -15,6 +15,7 @@ import AdminPosts from './pages/admin/AdminPosts';
 import AdminUsers from './pages/admin/AdminUsers';
 import EditPost from './pages/admin/EditPost';
 import CountryProfiles from './pages/admin/CountryProfiles';
+import AdminPDFUpload from './pages/admin/AdminPDFUpload';
 import './styles/global.css';
 
 function RequireAuth({ children }) {
@@ -48,6 +49,7 @@ function AppRoutes() {
         <Route path="/admin" element={<RequireAdmin><AdminLayout /></RequireAdmin>}>
           <Route index element={<AdminDashboard />} />
           <Route path="new-post" element={<NewPost />} />
+          <Route path="upload-pdf" element={<AdminPDFUpload />} />
           <Route path="posts" element={<AdminPosts />} />
           <Route path="edit/:id" element={<EditPost />} />
           <Route path="users" element={<AdminUsers />} />

@@ -573,4 +573,101 @@ router.put('/users/:id/revoke', adminAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Parse PDF post (Summary / More Insights / For Students / Original Article format)
+router.post('/parse-pdf-post', adminAuth, upload.single('pdf'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'PDF file required' });
+  try {
+    const pdfBuffer = fs.readFileSync(req.file.path);
+
+    // Extract text via pdf-parse
+    let rawText = '';
+    try {
+      const _pdfParse = require('pdf-parse');
+      const pdfParse = typeof _pdfParse === 'function' ? _pdfParse : _pdfParse.default;
+      const parsed = await pdfParse(pdfBuffer);
+      rawText = parsed.text;
+    } catch (e) {
+      console.warn('pdf-parse failed:', e.message);
+    }
+
+    // Try to extract date from filename or title (format: MMDD e.g. 0319 = March 19)
+    const filename = req.file.originalname || '';
+    const dateMatch = filename.match(/(\d{2})(\d{2})/) || rawText.match(/[｜|](\d{2})(\d{2})[｜|]/);
+    let publishedAt = '';
+    if (dateMatch) {
+      const month = parseInt(dateMatch[1]);
+      const day = parseInt(dateMatch[2]);
+      const year = new Date().getFullYear();
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        publishedAt = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      }
+    }
+
+    // Use Claude to extract sections from the raw text
+    const pdfBase64 = pdfBuffer.toString('base64');
+    const prompt = `This PDF is an Economist article analysis in a specific format. Extract the sections and return ONLY a JSON object.
+
+The PDF has these sections:
+1. A title like "经济学人｜MMDD｜Chinese article title" 
+2. Summary: contains "一句话总结" (one-line summary) and "语音稿" (audio script paragraph)
+3. More Insights: the Chinese deep-dive analysis of the article
+4. For Students with subsections:
+   - 理论补充 (theory explanation)  
+   - 启发性问题与解答 (discussion questions and answers)
+   - 外媒与行业视角的补充 (other media perspectives)
+5. Original Article: the full English original article text
+
+Extract and return this JSON (all Chinese content stays in Chinese, English stays in English):
+{
+  "title": "The Chinese title of the post",
+  "economist_title": "The English article title from the Original Article section",
+  "summary": "The 一句话总结 sentence only",
+  "audio_script": "The 语音稿 paragraph only",
+  "theory_explanation": "Full More Insights section text, then a blank line, then the 理论补充 subsection from For Students",
+  "exam_questions": "The full 启发性问题与解答 section including questions and answers",
+  "other_media": "The full 外媒与行业视角的补充 section",
+  "pdf_text": "The full Original Article English text only, no headers",
+  "country_tags": ["array", "of", "English", "country names", "mentioned in the article"]
+}
+
+Rules:
+- No markdown, no code fences
+- Keep all Chinese text exactly as written
+- For pdf_text: only include the English article body, not the Chinese summary/analysis
+- Use \\n for line breaks within strings`;
+
+    const raw = await callClaude(prompt, pdfBase64);
+
+    // Repair and parse
+    let cleaned = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    const start = cleaned.indexOf('{');
+    if (start > 0) cleaned = cleaned.slice(start);
+
+    // Fix raw newlines inside strings
+    let result = '';
+    let inString = false;
+    let escaped = false;
+    for (let i = 0; i < cleaned.length; i++) {
+      const ch = cleaned[i];
+      if (escaped) { result += ch; escaped = false; continue; }
+      if (ch === '\\') { result += ch; escaped = true; continue; }
+      if (ch === '"') { inString = !inString; result += ch; continue; }
+      if (inString) {
+        if (ch === '\n') { result += '\\n'; continue; }
+        if (ch === '\r') { result += '\\r'; continue; }
+        if (ch === '\t') { result += '\\t'; continue; }
+      }
+      result += ch;
+    }
+
+    const extracted = JSON.parse(result);
+    if (publishedAt) extracted.published_at = publishedAt;
+
+    res.json(extracted);
+  } catch (err) {
+    console.error('parse-pdf-post error:', err);
+    res.status(500).json({ error: 'Failed to parse PDF: ' + err.message });
+  }
+});
+
 module.exports = router;

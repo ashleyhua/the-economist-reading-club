@@ -15,11 +15,12 @@ export default function AdminLayout() {
 
   return (
     <div style={{ display: 'flex', minHeight: 'calc(100vh - 63px)' }}>
-      {/* Sidebar */}
       <div style={{ width: 200, borderRight: '1px solid var(--border)', padding: '24px 12px', flexShrink: 0, background: 'white' }}>
+
         <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-light)', marginBottom: 8, padding: '0 14px' }}>Content</div>
         <NavLink to="/admin" end style={linkStyle}>Dashboard</NavLink>
         <NavLink to="/admin/new-post" style={linkStyle}>New Post</NavLink>
+        <NavLink to="/admin/upload-pdf" style={linkStyle}>Upload PDF</NavLink>
         <NavLink to="/admin/posts" style={linkStyle}>All Posts</NavLink>
 
         <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-light)', marginBottom: 8, marginTop: 20, padding: '0 14px' }}>Globe</div>
@@ -35,8 +36,6 @@ export default function AdminLayout() {
           Log out
         </button>
       </div>
-
-      {/* Content */}
       <div style={{ flex: 1, padding: '32px 40px', overflowY: 'auto', background: 'var(--bg)' }}>
         <Outlet />
       </div>
