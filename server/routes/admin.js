@@ -573,99 +573,72 @@ router.put('/users/:id/revoke', adminAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Parse PDF post (Summary / More Insights / For Students / Original Article format)
 router.post('/parse-pdf-post', adminAuth, upload.single('pdf'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'PDF file required' });
   try {
     const pdfBuffer = fs.readFileSync(req.file.path);
+    const pdfBase64 = pdfBuffer.toString('base64');
 
-    // Extract text via pdf-parse
-    let rawText = '';
-    try {
-      const _pdfParse = require('pdf-parse');
-      const pdfParse = typeof _pdfParse === 'function' ? _pdfParse : _pdfParse.default;
-      const parsed = await pdfParse(pdfBuffer);
-      rawText = parsed.text;
-    } catch (e) {
-      console.warn('pdf-parse failed:', e.message);
-    }
-
-    // Try to extract date from filename or title (format: MMDD e.g. 0319 = March 19)
+    // Extract date from filename (format: MMDD e.g. 0319 = March 19)
     const filename = req.file.originalname || '';
-    const dateMatch = filename.match(/(\d{2})(\d{2})/) || rawText.match(/[｜|](\d{2})(\d{2})[｜|]/);
+    const dateMatch = filename.match(/(\d{2})(\d{2})/);
     let publishedAt = '';
     if (dateMatch) {
       const month = parseInt(dateMatch[1]);
       const day = parseInt(dateMatch[2]);
-      const year = new Date().getFullYear();
       if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        const year = new Date().getFullYear();
         publishedAt = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
       }
     }
 
-    // Use Claude to extract sections from the raw text
-    const pdfBase64 = pdfBuffer.toString('base64');
-    const prompt = `This PDF is an Economist article analysis in a specific format. Extract the sections and return ONLY a JSON object.
+    // Use Claude to extract all sections
+    const prompt = `This PDF is an Economist article analysis. Extract the sections and return a JSON object.
 
 The PDF has these sections:
-1. A title like "经济学人｜MMDD｜Chinese article title" 
-2. Summary: contains "一句话总结" (one-line summary) and "语音稿" (audio script paragraph)
-3. More Insights: the Chinese deep-dive analysis of the article
-4. For Students with subsections:
-   - 理论补充 (theory explanation)  
-   - 启发性问题与解答 (discussion questions and answers)
-   - 外媒与行业视角的补充 (other media perspectives)
-5. Original Article: the full English original article text
+- Title line like "经济学人｜MMDD｜Chinese title"
+- Summary: has 一句话总结 (one sentence) and 语音稿 (audio script paragraph)
+- More Insights: Chinese deep-dive analysis
+- For Students with: 理论补充, 启发性问题与解答, 外媒与行业视角的补充
+- Original Article: full English text
 
-Extract and return this JSON (all Chinese content stays in Chinese, English stays in English):
-{
-  "title": "The Chinese title of the post",
-  "economist_title": "The English article title from the Original Article section",
-  "summary": "The 一句话总结 sentence only",
-  "audio_script": "The 语音稿 paragraph only",
-  "theory_explanation": "Full More Insights section text, then a blank line, then the 理论补充 subsection from For Students",
-  "exam_questions": "The full 启发性问题与解答 section including questions and answers",
-  "other_media": "The full 外媒与行业视角的补充 section",
-  "pdf_text": "The full Original Article English text only, no headers",
-  "country_tags": ["array", "of", "English", "country names", "mentioned in the article"]
-}
+CRITICAL: Return ONLY the JSON object. No markdown. No code fences. No text before or after.
+Every string value must be completely on ONE LINE. Replace any line breaks within a value with the two characters backslash-n.
+Never use actual newline characters inside a JSON string value.
 
-Rules:
-- No markdown, no code fences
-- Keep all Chinese text exactly as written
-- For pdf_text: only include the English article body, not the Chinese summary/analysis
-- Use \\n for line breaks within strings`;
+Return exactly this shape:
+{"title":"Chinese title","economist_title":"English article title","summary":"The 一句话总结 sentence","audio_script":"The 语音稿 paragraph text","theory_explanation":"More Insights text then blank line then 理论补充 section","exam_questions":"启发性问题与解答 full text","other_media":"外媒与行业视角的补充 full text","pdf_text":"Original Article English text only","country_tags":["China","Iran"]}`;
 
     const raw = await callClaude(prompt, pdfBase64);
+    console.log('parse-pdf-post raw (first 300):', raw.slice(0, 300));
 
-    // Repair and parse
-    let cleaned = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-    const start = cleaned.indexOf('{');
-    if (start > 0) cleaned = cleaned.slice(start);
+    // Robust repair: walk char by char fixing newlines inside strings
+    let text = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    const start = text.indexOf('{');
+    if (start > 0) text = text.slice(start);
 
-    // Fix raw newlines inside strings
-    let result = '';
-    let inString = false;
-    let escaped = false;
-    for (let i = 0; i < cleaned.length; i++) {
-      const ch = cleaned[i];
-      if (escaped) { result += ch; escaped = false; continue; }
-      if (ch === '\\') { result += ch; escaped = true; continue; }
-      if (ch === '"') { inString = !inString; result += ch; continue; }
-      if (inString) {
-        if (ch === '\n') { result += '\\n'; continue; }
-        if (ch === '\r') { result += '\\r'; continue; }
-        if (ch === '\t') { result += '\\t'; continue; }
+    let fixed = '';
+    let inStr = false;
+    let esc = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (esc) { fixed += c; esc = false; continue; }
+      if (c === '\\') { fixed += c; esc = true; continue; }
+      if (c === '"') { inStr = !inStr; fixed += c; continue; }
+      if (inStr) {
+        if (c === '\n') { fixed += '\\n'; continue; }
+        if (c === '\r') { fixed += '\\r'; continue; }
+        if (c === '\t') { fixed += '\\t'; continue; }
       }
-      result += ch;
+      fixed += c;
     }
 
-    const extracted = JSON.parse(result);
+    const extracted = JSON.parse(fixed);
     if (publishedAt) extracted.published_at = publishedAt;
 
     res.json(extracted);
   } catch (err) {
-    console.error('parse-pdf-post error:', err);
+    console.error('parse-pdf-post error:', err.message);
     res.status(500).json({ error: 'Failed to parse PDF: ' + err.message });
   }
 });

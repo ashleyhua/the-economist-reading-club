@@ -82,7 +82,7 @@ export default function AdminPDFUpload() {
   return (
     <div style={{ maxWidth: 800 }}>
       <div style={{ marginBottom: 28 }}>
-        <h2 style={{ fontFamily: 'var(--serif)', fontSize: 22, marginBottom: 6 }}>Upload Friend's PDF</h2>
+        <h2 style={{ fontFamily: 'var(--serif)', fontSize: 22, marginBottom: 6 }}>Upload PDF</h2>
         <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>
           Upload a PDF in the standard analysis format. The sections will be extracted automatically for review before publishing.
         </p>
