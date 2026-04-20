@@ -592,7 +592,6 @@ router.post('/parse-pdf-post', adminAuth, upload.single('pdf'), async (req, res)
       }
     }
 
-    // Use Claude to extract all sections
     const prompt = `This PDF is an Economist article analysis. Extract the sections and return a JSON object.
 
 The PDF has these sections:
@@ -602,21 +601,26 @@ The PDF has these sections:
 - For Students with: 理论补充, 启发性问题与解答, 外媒与行业视角的补充
 - Original Article: full English text
 
-CRITICAL: Return ONLY the JSON object. No markdown. No code fences. No text before or after.
-Every string value must be completely on ONE LINE. Replace any line breaks within a value with the two characters backslash-n.
-Never use actual newline characters inside a JSON string value.
+CRITICAL RULES:
+- Return ONLY the raw JSON object — no markdown, no code fences, nothing before or after
+- Do NOT use double quote characters " anywhere inside string values — use 「」for Chinese quotes instead
+- Every string value must be on ONE LINE — no actual line breaks inside strings, use \\n instead
+- All string values must use single Chinese 「」quotes, not ASCII double quotes "
 
-Return exactly this shape:
-{"title":"Chinese title","economist_title":"English article title","summary":"The 一句话总结 sentence","audio_script":"The 语音稿 paragraph text","theory_explanation":"More Insights text then blank line then 理论补充 section","exam_questions":"启发性问题与解答 full text","other_media":"外媒与行业视角的补充 full text","pdf_text":"Original Article English text only","country_tags":["China","Iran"]}`;
+Return exactly this shape (fill in values):
+{"title":"value","economist_title":"value","summary":"value","audio_script":"value","theory_explanation":"value","exam_questions":"value","other_media":"value","pdf_text":"value","country_tags":["China"]}`;
 
     const raw = await callClaude(prompt, pdfBase64);
-    console.log('parse-pdf-post raw (first 300):', raw.slice(0, 300));
+    console.log('parse-pdf-post raw (first 400):', raw.slice(0, 400));
 
-    // Robust repair: walk char by char fixing newlines inside strings
+    // Step 1: strip markdown fences
     let text = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+
+    // Step 2: find start of JSON object
     const start = text.indexOf('{');
     if (start > 0) text = text.slice(start);
 
+    // Step 3: walk char by char — fix newlines inside strings AND track string boundaries
     let fixed = '';
     let inStr = false;
     let esc = false;
@@ -627,16 +631,35 @@ Return exactly this shape:
       if (c === '"') { inStr = !inStr; fixed += c; continue; }
       if (inStr) {
         if (c === '\n') { fixed += '\\n'; continue; }
-        if (c === '\r') { fixed += '\\r'; continue; }
+        if (c === '\r') continue;
         if (c === '\t') { fixed += '\\t'; continue; }
       }
       fixed += c;
     }
 
-    const extracted = JSON.parse(fixed);
-    if (publishedAt) extracted.published_at = publishedAt;
+    // Step 4: try parsing — if it fails, attempt a more aggressive field-by-field extraction
+    let extracted;
+    try {
+      extracted = JSON.parse(fixed);
+    } catch (parseErr) {
+      console.log('Direct parse failed, trying field extraction. Error:', parseErr.message);
+      // Extract each field individually using regex that handles Chinese content
+      const fields = ['title','economist_title','summary','audio_script','theory_explanation','exam_questions','other_media','pdf_text'];
+      extracted = { country_tags: [] };
+      for (const field of fields) {
+        const match = fixed.match(new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`));
+        if (match) extracted[field] = match[1].replace(/\\n/g, '\n');
+      }
+      // Extract country_tags array
+      const tagsMatch = fixed.match(/"country_tags"\s*:\s*\[([^\]]*)\]/);
+      if (tagsMatch) {
+        extracted.country_tags = tagsMatch[1].match(/"([^"]+)"/g)?.map(s => s.replace(/"/g, '')) || [];
+      }
+    }
 
+    if (publishedAt) extracted.published_at = publishedAt;
     res.json(extracted);
+
   } catch (err) {
     console.error('parse-pdf-post error:', err.message);
     res.status(500).json({ error: 'Failed to parse PDF: ' + err.message });
