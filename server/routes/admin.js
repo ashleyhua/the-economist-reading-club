@@ -573,6 +573,7 @@ router.put('/users/:id/revoke', adminAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+
 router.post('/parse-pdf-post', adminAuth, upload.single('pdf'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'PDF file required' });
   try {
@@ -592,10 +593,18 @@ router.post('/parse-pdf-post', adminAuth, upload.single('pdf'), async (req, res)
       }
     }
 
+    // Try to extract title from filename "经济学人｜0319｜中国无法完全置身于能源冲击之外.pdf"
+    let titleFromFilename = '';
+    const filenameParts = filename.replace(/.pdf$/i, '').split(/[｜|]/);
+    if (filenameParts.length >= 3) {
+      titleFromFilename = filenameParts[filenameParts.length - 1].trim();
+    }
+    console.log('Title from filename:', titleFromFilename);
+
     const prompt = `This PDF is an Economist article analysis. Extract the sections and return a JSON object.
 
 The PDF has these sections:
-- Title line like "经济学人｜MMDD｜Chinese title"
+- Title line like "经济学人｜MMDD｜Chinese title" — the title is the THIRD part after splitting by ｜ (the full pipe character). So for "经济学人｜0319｜中国无法完全置身于能源冲击之外", the title is "中国无法完全置身于能源冲击之外" only.
 - Summary: has 一句话总结 (one sentence) and 语音稿 (audio script paragraph)
 - More Insights: Chinese deep-dive analysis
 - For Students with: 理论补充, 启发性问题与解答, 外媒与行业视角的补充
@@ -658,6 +667,7 @@ Return exactly this shape (fill in values):
     }
 
     if (publishedAt) extracted.published_at = publishedAt;
+    if (titleFromFilename) extracted.title = titleFromFilename;
     res.json(extracted);
 
   } catch (err) {
@@ -665,5 +675,6 @@ Return exactly this shape (fill in values):
     res.status(500).json({ error: 'Failed to parse PDF: ' + err.message });
   }
 });
+
 
 module.exports = router;

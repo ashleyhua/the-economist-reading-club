@@ -68,9 +68,17 @@ export default function AdminPDFUpload() {
     setSaving(true);
     setError('');
     try {
+      // Ensure published_at is set when publishing
+      const payload = { ...content, is_published: isPublished };
+      if (isPublished && !payload.published_at) {
+        payload.published_at = new Date().toISOString();
+      } else if (payload.published_at && !payload.published_at.includes('T')) {
+        // Convert "2026-03-19" date string to full ISO timestamp
+        payload.published_at = new Date(payload.published_at + 'T12:00:00').toISOString();
+      }
       await apiFetch('/admin/posts', {
         method: 'POST',
-        body: JSON.stringify({ ...content, is_published: isPublished }),
+        body: JSON.stringify(payload),
       });
       navigate('/admin/posts');
     } catch (err) {
