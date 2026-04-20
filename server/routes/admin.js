@@ -478,7 +478,9 @@ router.post('/posts', adminAuth, async (req, res) => {
     const { title, economist_title, summary, theory_explanation, exam_questions,
             other_media, audio_script, audio_url, pdf_url, pdf_text, country_tags, is_published } = req.body;
     const id = uuidv4();
-    const published_at = is_published ? new Date().toISOString() : null;
+    const published_at = is_published
+      ? (req.body.published_at || new Date().toISOString())
+      : null;
     await pool.query(
       `INSERT INTO posts (id, title, economist_title, summary, theory_explanation, exam_questions,
         other_media, audio_script, audio_url, pdf_url, pdf_text, country_tags, is_published, published_at)
