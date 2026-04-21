@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, apiFetch } from '../../utils/api';
+import AudioGenerateButton from '../../components/AudioGenerateButton';
 
 const STEPS = ['Choose article', 'Upload HTML · AI generate', 'Upload recording', 'Review & publish'];
 
@@ -211,6 +212,7 @@ export default function NewPost() {
                   <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: 8 }}>— record yourself reading this, then upload below</span>
                 </label>
                 <textarea value={editedContent.audio_script || ''} onChange={e => setField('audio_script', e.target.value)} rows={8} style={{ fontFamily: 'var(--sans)', lineHeight: 1.8 }} />
+                <AudioGenerateButton script={editedContent.audio_script} onAudioGenerated={(url) => setAudioUrl(url)} />
               </div>
               <div>
                 <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 6 }}>Theory & concepts (student section)</label>

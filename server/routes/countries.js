@@ -69,17 +69,13 @@ router.post('/generate/:country', adminAuth, async (req, res) => {
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    const prompt = `Create an educational country profile for ${country} for Chinese high school students (2025-2026 context).
+    const prompt = `Country profile for ${country} for Chinese students (2025-2026). Return ONLY JSON. No markdown. No code fences. Keep ALL string values SHORT (under 60 characters each). No line breaks inside strings. No double quotes inside strings - use 「」instead.
 
-Return ONLY a JSON object. No markdown. No code fences. No explanations before or after.
-Every string value must be on a single line with no line breaks.
-Use 「」for quotes within Chinese text, never use " inside string values.
-
-{"snapshot":"<one sentence in Chinese>","current_issues":[{"title":"<Chinese>","description":"<Chinese>"},{"title":"<Chinese>","description":"<Chinese>"},{"title":"<Chinese>","description":"<Chinese>"}],"political":{"system":"<Chinese>","key_actors":["<Chinese>","<Chinese>","<Chinese>"],"foreign_relations":[{"country":"<English>","status":"ally","description":"<Chinese>"},{"country":"<English>","status":"neutral","description":"<Chinese>"},{"country":"<English>","status":"tense","description":"<Chinese>"},{"country":"<English>","status":"hostile","description":"<Chinese>"}]},"economic":{"gdp":"<value>","inflation":"<value>","key_export":"<value>","story":"<Chinese>"},"historical":[{"year":"<year>","event":"<Chinese>","significance":"<Chinese>"},{"year":"<year>","event":"<Chinese>","significance":"<Chinese>"},{"year":"<year>","event":"<Chinese>","significance":"<Chinese>"}],"concepts":[{"term_en":"<English>","term_zh":"<Chinese>","explanation":"<Chinese>"},{"term_en":"<English>","term_zh":"<Chinese>","explanation":"<Chinese>"},{"term_en":"<English>","term_zh":"<Chinese>","explanation":"<Chinese>"}]}`;
+{"snapshot":"<20-30 char Chinese>","current_issues":[{"title":"<15 char Chinese>","description":"<50 char Chinese>"},{"title":"<15 char>","description":"<50 char>"},{"title":"<15 char>","description":"<50 char>"}],"political":{"system":"<30 char Chinese>","key_actors":["<20 char>","<20 char>","<20 char>"],"foreign_relations":[{"country":"USA","status":"ally","description":"<40 char Chinese>"},{"country":"Russia","status":"neutral","description":"<40 char>"},{"country":"Japan","status":"tense","description":"<40 char>"},{"country":"India","status":"neutral","description":"<40 char>"}]},"economic":{"gdp":"$XX trillion","inflation":"X%","key_export":"<10 char>","story":"<50 char Chinese>"},"historical":[{"year":"1949","event":"<15 char Chinese>","significance":"<40 char>"},{"year":"1978","event":"<15 char>","significance":"<40 char>"},{"year":"2001","event":"<15 char>","significance":"<40 char>"}],"concepts":[{"term_en":"GDP","term_zh":"国内生产总值","explanation":"<40 char Chinese>"},{"term_en":"BRI","term_zh":"一带一路","explanation":"<40 char>"},{"term_en":"SOE","term_zh":"国有企业","explanation":"<40 char>"}]}`;
 
     const msg = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2048,
+      max_tokens: 3000,
       messages: [{ role: 'user', content: prompt }]
     });
 

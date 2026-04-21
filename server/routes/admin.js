@@ -678,5 +678,56 @@ Return exactly this shape (fill in values):
   }
 });
 
+// ADD THIS to server/routes/admin.js before module.exports = router;
+
+// Generate audio from script using ElevenLabs
+router.post('/generate-audio-elevenlabs', adminAuth, async (req, res) => {
+  const { script } = req.body;
+  if (!script) return res.status(400).json({ error: 'Script text required' });
+
+  try {
+    // First, find the voice ID for "Wenjing"
+    const voicesRes = await fetch('https://api.elevenlabs.io/v1/voices', {
+      headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY }
+    });
+    const voicesData = await voicesRes.json();
+    const wenjingVoice = voicesData.voices?.find(v => v.name === 'Wenjing');
+    if (!wenjingVoice) {
+      return res.status(404).json({ error: 'Voice "Wenjing" not found in your ElevenLabs account. Please check the voice name.' });
+    }
+    const voiceId = wenjingVoice.voice_id;
+    console.log('Using ElevenLabs voice:', wenjingVoice.name, voiceId);
+
+    // Generate audio
+    const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': process.env.ELEVENLABS_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: script,
+        model_id: 'eleven_multilingual_v2',
+        voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+      })
+    });
+
+    if (!ttsRes.ok) {
+      const err = await ttsRes.json().catch(() => ({}));
+      return res.status(500).json({ error: 'ElevenLabs error: ' + (err.detail?.message || ttsRes.status) });
+    }
+
+    // Save audio file
+    const audioBuffer = Buffer.from(await ttsRes.arrayBuffer());
+    const filename = `${require('uuid').v4()}.mp3`;
+    const filepath = path.join(__dirname, '..', 'uploads', filename);
+    fs.writeFileSync(filepath, audioBuffer);
+
+    res.json({ audio_url: `/uploads/${filename}` });
+  } catch (err) {
+    console.error('ElevenLabs error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 module.exports = router;
