@@ -1,7 +1,7 @@
-// client/src/components/AudioGenerateButton.jsx
-// Reusable button to generate audio from a script using ElevenLabs
+import { useState } from 'react';
 
 const BASE = import.meta.env.VITE_API_BASE || '/api';
+const UPLOADS_BASE = BASE.replace('/api', '');
 
 async function apiFetch(path, options = {}) {
   const token = localStorage.getItem('wenjing_token');
@@ -13,26 +13,29 @@ async function apiFetch(path, options = {}) {
   return data;
 }
 
-import { useState } from 'react';
+function resolveUrl(url) {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  return `${UPLOADS_BASE}${url}`;
+}
 
 export default function AudioGenerateButton({ script, onAudioGenerated }) {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
+  const [audioUrl, setAudioUrl] = useState('');
 
   async function generate() {
     if (!script?.trim()) { setError('No audio script to generate from.'); return; }
     setGenerating(true);
     setError('');
-    setSuccess(false);
     try {
       const data = await apiFetch('/admin/generate-audio-elevenlabs', {
         method: 'POST',
         body: JSON.stringify({ script }),
       });
-      onAudioGenerated(data.audio_url);
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
+      const resolved = resolveUrl(data.audio_url);
+      setAudioUrl(resolved);
+      onAudioGenerated(data.audio_url); // store relative path in DB
     } catch (err) {
       setError(err.message);
     }
@@ -46,20 +49,24 @@ export default function AudioGenerateButton({ script, onAudioGenerated }) {
         disabled={generating || !script?.trim()}
         style={{
           padding: '8px 16px',
-          background: generating ? '#999' : success ? '#48BB78' : '#CC0000',
+          background: generating ? '#999' : '#CC0000',
           color: 'white', border: 'none', borderRadius: 6,
           cursor: generating || !script?.trim() ? 'not-allowed' : 'pointer',
-          fontSize: 13, fontWeight: 500, transition: 'background 0.2s',
+          fontSize: 13, fontWeight: 500,
           display: 'flex', alignItems: 'center', gap: 8,
         }}
       >
-        {generating && <span style={{ width: 12, height: 12, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />}
-        {generating ? 'Generating audio…' : success ? 'Audio generated!' : 'Generate Audio from Script (ElevenLabs)'}
+        {generating && (
+          <span style={{ width: 12, height: 12, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
+        )}
+        {generating ? 'Generating audio…' : 'Generate Audio from Script'}
       </button>
       {error && <div style={{ marginTop: 6, fontSize: 12, color: '#E53E3E' }}>{error}</div>}
-      <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>
-        Uses ElevenLabs Wenjing voice · eleven_multilingual_v2 · ~10 seconds
-      </div>
+      {audioUrl && (
+        <div style={{ marginTop: 10 }}>
+          <audio controls src={audioUrl} style={{ width: '100%', height: 36 }} />
+        </div>
+      )}
     </div>
   );
 }
