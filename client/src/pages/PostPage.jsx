@@ -74,7 +74,7 @@ export default function PostPage() {
 
       {post.audio_url && (
         <div style={{ marginBottom: 20 }}>
-          <AudioPlayer src={post.audio_url} title="2-minute audio briefing" />
+          <AudioPlayer src={post.audio_url} title="Audio briefing" />
         </div>
       )}
 

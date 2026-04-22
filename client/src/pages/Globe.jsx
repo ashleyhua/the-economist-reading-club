@@ -341,6 +341,14 @@ export default function Globe() {
           if (containerRef.current) globe.width(containerRef.current.clientWidth).height(containerRef.current.clientHeight);
         });
         setLoading(false);
+        // Update points now in case countryCounts loaded before globe finished initializing
+        if (Object.keys(allPostsRef.current).length > 0 || true) {
+          setTimeout(() => {
+            if (globeRef.current) {
+              globeRef.current.pointsData(buildPoints());
+            }
+          }, 500);
+        }
       } catch (err) {
         if (!cancelled) { setError(err.message); setLoading(false); }
       }
@@ -365,7 +373,7 @@ export default function Globe() {
           <div style={{ fontSize: 14, opacity: 0.75 }}>{error}</div>
           <button onClick={() => window.location.reload()} style={{ padding: '8px 20px', background: '#CC0000', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' }}>Retry</button>
         </div>}
-        <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+        <div ref={containerRef} style={{ width: '100%', height: '100%', minHeight: 300 }} />
         {!loading && !error && <>
           <div style={{ position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,255,255,0.4)', fontSize: 12, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
             Drag to rotate · Scroll to zoom · Click any dot for details
