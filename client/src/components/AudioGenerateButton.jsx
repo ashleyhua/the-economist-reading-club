@@ -1,7 +1,6 @@
 import { useState } from 'react';
 
 const BASE = import.meta.env.VITE_API_BASE || '/api';
-const UPLOADS_BASE = BASE.replace('/api', '');
 
 async function apiFetch(path, options = {}) {
   const token = localStorage.getItem('wenjing_token');
@@ -13,12 +12,6 @@ async function apiFetch(path, options = {}) {
   return data;
 }
 
-function resolveUrl(url) {
-  if (!url) return '';
-  if (url.startsWith('http')) return url;
-  return `${UPLOADS_BASE}${url}`;
-}
-
 export default function AudioGenerateButton({ script, onAudioGenerated }) {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
@@ -28,15 +21,18 @@ export default function AudioGenerateButton({ script, onAudioGenerated }) {
     if (!script?.trim()) { setError('No audio script to generate from.'); return; }
     setGenerating(true);
     setError('');
+    setAudioUrl('');
     try {
       const data = await apiFetch('/admin/generate-audio-elevenlabs', {
         method: 'POST',
         body: JSON.stringify({ script }),
       });
-      const resolved = resolveUrl(data.audio_url);
-      setAudioUrl(resolved);
-      onAudioGenerated(data.audio_url); // store relative path in DB
+      console.log('Audio generated, url length:', data.audio_url?.length, 'starts with:', data.audio_url?.slice(0, 30));
+      // audio_url is now a data: URL — pass it through directly, no resolving needed
+      setAudioUrl(data.audio_url);
+      onAudioGenerated(data.audio_url);
     } catch (err) {
+      console.error('Audio generation error:', err);
       setError(err.message);
     }
     setGenerating(false);
@@ -61,10 +57,17 @@ export default function AudioGenerateButton({ script, onAudioGenerated }) {
         )}
         {generating ? 'Generating audio…' : 'Generate Audio from Script'}
       </button>
-      {error && <div style={{ marginTop: 6, fontSize: 12, color: '#E53E3E' }}>{error}</div>}
+      {error && (
+        <div style={{ marginTop: 6, fontSize: 12, color: '#E53E3E', padding: '6px 10px', background: '#FFF5F5', borderRadius: 4, border: '1px solid #FED7D7' }}>
+          {error}
+        </div>
+      )}
       {audioUrl && (
         <div style={{ marginTop: 10 }}>
-          <audio controls src={audioUrl} style={{ width: '100%', height: 36 }} />
+          <audio controls src={audioUrl} style={{ width: '100%' }}
+            onError={(e) => console.error('Audio element error:', e)}
+            onLoadedMetadata={() => console.log('Audio metadata loaded')}
+          />
         </div>
       )}
     </div>

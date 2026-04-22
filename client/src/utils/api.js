@@ -6,7 +6,7 @@ export const BACKEND_BASE = BASE.replace(/\/api$/, '');
 // Resolve a relative /uploads/... URL to a full URL when deployed
 export function resolveUrl(url) {
   if (!url) return '';
-  if (url.startsWith('http')) return url;
+  if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')) return url;
   return `${BACKEND_BASE}${url}`;
 }
 
