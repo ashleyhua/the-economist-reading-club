@@ -27,8 +27,11 @@ function WordToken({ word, annotation, inVocab, onAddVocab, onRemoveVocab }) {
 
   if (!ann) return <span>{word}</span>;
 
-  const color = ann.type === 'technical' ? '#1565C0' : ann.type === 'opinion' ? '#7B1FA2' : '#CC0000';
-  const bg = ann.type === 'technical' ? '#E3F2FD' : ann.type === 'opinion' ? '#F3E5F5' : 'transparent';
+  // Only technical and opinion words get colored highlights
+  // All annotated words show tooltip on hover/click
+  const isHighlighted = ann.type === 'technical' || ann.type === 'opinion';
+  const color = ann.type === 'technical' ? '#1565C0' : ann.type === 'opinion' ? '#7B1FA2' : 'inherit';
+  const bg = ann.type === 'technical' ? '#E3F2FD' : ann.type === 'opinion' ? '#F3E5F5' : 'rgba(0,0,0,0.04)';
   const isVocab = inVocab(key);
 
   return (
@@ -36,9 +39,9 @@ function WordToken({ word, annotation, inVocab, onAddVocab, onRemoveVocab }) {
       <span
         onClick={() => setShowPopup(v => !v)}
         style={{
-          color,
+          color: isHighlighted ? color : 'inherit',
           background: showPopup ? bg : 'transparent',
-          borderBottom: `1px dotted ${color}`,
+          borderBottom: isHighlighted ? `1px dotted ${color}` : '1px dotted #ccc',
           cursor: 'pointer',
           borderRadius: 2,
           padding: '0 1px',
@@ -52,82 +55,50 @@ function WordToken({ word, annotation, inVocab, onAddVocab, onRemoveVocab }) {
 
       {showPopup && (
         <span style={{
-          position: 'absolute',
-          bottom: '100%',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          marginBottom: 6,
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
           background: '#1A1A1A',
           color: 'white',
-          borderRadius: 8,
-          padding: '10px 14px',
-          minWidth: 180,
-          maxWidth: 280,
-          zIndex: 1000,
-          boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+          borderRadius: '12px 12px 0 0',
+          padding: '16px 20px 28px',
+          zIndex: 9999,
+          boxShadow: '0 -4px 30px rgba(0,0,0,0.4)',
           display: 'block',
+          whiteSpace: 'normal',
         }}>
-          {/* Type badge */}
           {ann.type !== 'vocab' && (
             <span style={{
-              fontSize: 10,
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
+              fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em',
               background: ann.type === 'technical' ? '#1976D2' : '#7B1FA2',
-              padding: '2px 6px',
-              borderRadius: 3,
-              marginBottom: 6,
-              display: 'inline-block',
+              padding: '2px 6px', borderRadius: 3, marginBottom: 6, display: 'inline-block',
             }}>
               {ann.type === 'technical' ? 'Technical' : 'Opinion'}
             </span>
           )}
-
-          {/* Word + translation */}
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: ann.type !== 'vocab' ? 6 : 0 }}>
             <span style={{ fontFamily: 'var(--serif)', fontSize: 16, fontWeight: 600 }}>{word}</span>
             <span style={{ fontSize: 14, color: '#aaa' }}>→</span>
             <span style={{ fontSize: 15, color: '#FFD700', fontWeight: 500 }}>{ann.translation}</span>
           </div>
-
-          {/* Explanation for technical/opinion */}
           {ann.explanation && (
-            <div style={{ fontSize: 12, color: '#bbb', marginTop: 6, lineHeight: 1.5 }}>
-              {ann.explanation}
-            </div>
+            <div style={{ fontSize: 12, color: '#bbb', marginTop: 6, lineHeight: 1.5 }}>{ann.explanation}</div>
           )}
-
-          {/* Add/remove vocab button */}
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              isVocab ? onRemoveVocab(key) : onAddVocab(key, ann.translation);
-            }}
+            onClick={(e) => { e.stopPropagation(); isVocab ? onRemoveVocab(key) : onAddVocab(key, ann.translation); }}
             style={{
-              marginTop: 8,
-              width: '100%',
-              padding: '5px 0',
+              marginTop: 8, width: '100%', padding: '5px 0',
               background: isVocab ? 'rgba(204,0,0,0.2)' : 'rgba(255,255,255,0.1)',
               border: `1px solid ${isVocab ? '#CC0000' : 'rgba(255,255,255,0.2)'}`,
-              borderRadius: 4,
-              color: isVocab ? '#ff6666' : 'white',
-              fontSize: 12,
-              cursor: 'pointer',
+              borderRadius: 4, color: isVocab ? '#ff6666' : 'white', fontSize: 12, cursor: 'pointer',
             }}
           >
             {isVocab ? '− Remove from vocab' : '+ Add to vocab'}
           </button>
-
-          {/* Caret */}
           <span style={{
-            position: 'absolute',
-            top: '100%',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            borderLeft: '6px solid transparent',
-            borderRight: '6px solid transparent',
-            borderTop: '6px solid #1A1A1A',
+            position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+            borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid #1A1A1A',
           }} />
         </span>
       )}
@@ -246,10 +217,10 @@ export default function LearnArticle() {
 
         {/* Legend */}
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', padding: '12px 16px', background: '#F8F8F6', borderRadius: 8, fontSize: 13 }}>
-          <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Click any highlighted word:</span>
-          <span style={{ color: '#CC0000', borderBottom: '1px dotted #CC0000' }}>General vocabulary</span>
+          <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Hover any underlined word for translation:</span>
           <span style={{ color: '#1565C0', borderBottom: '1px dotted #1565C0' }}>Technical term</span>
           <span style={{ color: '#7B1FA2', borderBottom: '1px dotted #7B1FA2' }}>Author's opinion</span>
+          <span style={{ color: 'var(--text)', borderBottom: '1px dotted #ccc' }}>General word</span>
         </div>
       </header>
 

@@ -213,7 +213,8 @@ function CountryPanel({ country, posts, onClose }) {
   );
 
   return createPortal(
-    <div style={{ position: 'fixed', top: 63, right: 0, width: 400, height: 'calc(100vh - 63px)', background: '#111827', borderLeft: '1px solid rgba(255,255,255,0.12)', display: 'flex', flexDirection: 'column', zIndex: 99999, boxShadow: '-4px 0 24px rgba(0,0,0,0.5)' }}>
+    <div style={{ position: 'fixed', top: 'auto', bottom: 0, left: 0, right: 0, width: '100%', maxHeight: '70vh', background: '#111827', borderTop: '1px solid rgba(255,255,255,0.12)', display: 'flex', flexDirection: 'column', zIndex: 99999, boxShadow: '0 -4px 24px rgba(0,0,0,0.5)', borderRadius: '12px 12px 0 0' }}>
+      <style>{'.globe-panel-desktop { top: 63px !important; bottom: auto !important; left: auto !important; right: 0 !important; width: 400px !important; max-height: calc(100vh - 63px) !important; border-radius: 0 !important; border-top: none !important; border-left: 1px solid rgba(255,255,255,0.12) !important; }'}</style>
       <div style={{ padding: '18px 20px 0', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
           <div>
