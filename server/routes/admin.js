@@ -257,7 +257,7 @@ router.post('/upload-audio', adminAuth, upload.single('audio'), (req, res) => {
 });
 
 // Generate audio using Replicate Qwen3-TTS with voice cloning
-// (route name kept as-is for frontend compatibility)
+// Step 1: start prediction and return ID immediately (avoids Render's 30s timeout)
 router.post('/generate-audio', adminAuth, async (req, res) => {
   const { script } = req.body;
   if (!script?.trim()) return res.status(400).json({ error: 'Script text required' });
@@ -265,8 +265,8 @@ router.post('/generate-audio', adminAuth, async (req, res) => {
   const replicateToken = process.env.REPLICATE_API_TOKEN;
   const referenceAudioUrl = process.env.REFERENCE_AUDIO_URL;
 
-  if (!replicateToken) return res.status(500).json({ error: 'REPLICATE_API_TOKEN not set in environment variables' });
-  if (!referenceAudioUrl) return res.status(500).json({ error: 'REFERENCE_AUDIO_URL not set in environment variables' });
+  if (!replicateToken) return res.status(500).json({ error: 'REPLICATE_API_TOKEN not set' });
+  if (!referenceAudioUrl) return res.status(500).json({ error: 'REFERENCE_AUDIO_URL not set' });
 
   try {
     const startRes = await fetch('https://api.replicate.com/v1/models/qwen/qwen3-tts/predictions', {
@@ -274,7 +274,6 @@ router.post('/generate-audio', adminAuth, async (req, res) => {
       headers: {
         'Authorization': `Bearer ${replicateToken}`,
         'Content-Type': 'application/json',
-        'Prefer': 'wait=120'
       },
       body: JSON.stringify({
         input: {
@@ -289,43 +288,50 @@ router.post('/generate-audio', adminAuth, async (req, res) => {
 
     const prediction = await startRes.json();
     console.log('Replicate prediction started. ID:', prediction.id, 'status:', prediction.status);
-    if (prediction.error) console.error('Replicate start error:', JSON.stringify(prediction));
 
     if (prediction.error) {
       return res.status(500).json({ error: 'Replicate error: ' + prediction.error });
     }
 
-    // Poll until done
-    let result = prediction;
-    let attempts = 0;
-    while (result.status !== 'succeeded' && result.status !== 'failed' && attempts < 200) {
-      await new Promise(r => setTimeout(r, 3000));
-      const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${result.id}`, {
-        headers: { 'Authorization': `Bearer ${replicateToken}` }
-      });
-      result = await pollRes.json();
-      console.log('Poll', ++attempts, 'status:', result.status);
-    }
+    // Return prediction ID immediately — frontend will poll /generate-audio-status/:id
+    res.json({ prediction_id: prediction.id, status: prediction.status });
+  } catch (err) {
+    console.error('Replicate start error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Step 2: poll prediction status — called repeatedly by frontend until succeeded
+router.get('/generate-audio-status/:id', adminAuth, async (req, res) => {
+  const replicateToken = process.env.REPLICATE_API_TOKEN;
+  if (!replicateToken) return res.status(500).json({ error: 'REPLICATE_API_TOKEN not set' });
+
+  try {
+    const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${req.params.id}`, {
+      headers: { 'Authorization': `Bearer ${replicateToken}` }
+    });
+    const result = await pollRes.json();
+    console.log('Poll status for', req.params.id, ':', result.status);
 
     if (result.status === 'failed') {
       return res.status(500).json({ error: 'Audio generation failed: ' + (result.error || 'unknown') });
     }
-    if (result.status !== 'succeeded') {
-      return res.status(500).json({ error: 'Audio generation timed out after 10 minutes.' });
+
+    if (result.status === 'succeeded') {
+      const audioUrl = Array.isArray(result.output) ? result.output[0] : result.output;
+      if (!audioUrl) return res.status(500).json({ error: 'No audio URL in response' });
+
+      // Download and convert to base64 data URL so it survives Render deploys
+      const audioRes = await fetch(audioUrl);
+      const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
+      const base64 = audioBuffer.toString('base64');
+      return res.json({ status: 'succeeded', audio_url: `data:audio/wav;base64,${base64}` });
     }
 
-    const audioUrl = Array.isArray(result.output) ? result.output[0] : result.output;
-    if (!audioUrl) return res.status(500).json({ error: 'No audio URL in Replicate response' });
-
-    // Download and store as base64 data URL so it survives Render deploys
-    const audioRes = await fetch(audioUrl);
-    const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
-    const base64 = audioBuffer.toString('base64');
-    const dataUrl = `data:audio/wav;base64,${base64}`;
-
-    res.json({ audio_url: dataUrl });
+    // Still processing — return status for frontend to keep polling
+    res.json({ status: result.status });
   } catch (err) {
-    console.error('Replicate TTS error:', err);
+    console.error('Replicate poll error:', err);
     res.status(500).json({ error: err.message });
   }
 });
