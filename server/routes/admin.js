@@ -265,8 +265,10 @@ router.post('/generate-audio', adminAuth, async (req, res) => {
   const replicateToken = process.env.REPLICATE_API_TOKEN;
   const referenceAudioUrl = process.env.REFERENCE_AUDIO_URL;
 
-  if (!replicateToken) return res.status(500).json({ error: 'REPLICATE_API_TOKEN not set' });
-  if (!referenceAudioUrl) return res.status(500).json({ error: 'REFERENCE_AUDIO_URL not set' });
+  if (!replicateToken) return res.status(500).json({ error: 'REPLICATE_API_TOKEN not set in Render environment variables' });
+  if (!referenceAudioUrl) return res.status(500).json({ error: 'REFERENCE_AUDIO_URL not set in Render environment variables' });
+
+  console.log('Starting Replicate TTS. Reference audio URL:', referenceAudioUrl.slice(0, 60));
 
   try {
     const startRes = await fetch('https://api.replicate.com/v1/models/qwen/qwen3-tts/predictions', {
@@ -274,6 +276,7 @@ router.post('/generate-audio', adminAuth, async (req, res) => {
       headers: {
         'Authorization': `Bearer ${replicateToken}`,
         'Content-Type': 'application/json',
+        'Prefer': 'respond-async'
       },
       body: JSON.stringify({
         input: {
@@ -287,13 +290,20 @@ router.post('/generate-audio', adminAuth, async (req, res) => {
     });
 
     const prediction = await startRes.json();
-    console.log('Replicate prediction started. ID:', prediction.id, 'status:', prediction.status);
+    console.log('Replicate response status:', startRes.status);
+    console.log('Replicate response body:', JSON.stringify(prediction).slice(0, 500));
 
-    if (prediction.error) {
-      return res.status(500).json({ error: 'Replicate error: ' + prediction.error });
+    if (startRes.status === 422) {
+      return res.status(422).json({ error: 'Invalid input: ' + JSON.stringify(prediction.detail || prediction) });
+    }
+    if (startRes.status === 401) {
+      return res.status(401).json({ error: 'Invalid REPLICATE_API_TOKEN' });
+    }
+    if (!prediction.id) {
+      return res.status(500).json({ error: 'No prediction ID from Replicate: ' + JSON.stringify(prediction).slice(0, 200) });
     }
 
-    // Return prediction ID immediately — frontend will poll /generate-audio-status/:id
+    console.log('Replicate prediction started. ID:', prediction.id, 'status:', prediction.status);
     res.json({ prediction_id: prediction.id, status: prediction.status });
   } catch (err) {
     console.error('Replicate start error:', err);
