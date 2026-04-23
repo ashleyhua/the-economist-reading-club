@@ -269,7 +269,6 @@ export default function Globe() {
     async function init() {
       try {
         // Use specific older versions known to work as UMD globals
-        await loadScript('https://cdn.jsdelivr.net/npm/three@0.133.1/build/three.min.js');
         await loadScript('https://cdn.jsdelivr.net/npm/globe.gl@2.24.2/dist/globe.gl.min.js');
         if (cancelled || !containerRef.current) return;
 
