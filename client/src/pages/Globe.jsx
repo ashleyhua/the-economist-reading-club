@@ -294,6 +294,12 @@ export default function Globe() {
         const w = containerRef.current.clientWidth || window.innerWidth;
         const h = containerRef.current.clientHeight || window.innerHeight - 63;
 
+        // CRITICAL: remove all existing canvas/children before creating new globe
+        // This frees the WebGL context so the browser limit isn't hit
+        while (containerRef.current.firstChild) {
+          containerRef.current.removeChild(containerRef.current.firstChild);
+        }
+
         globe = GlobeGL()(containerRef.current)
           .width(w).height(h)
           .backgroundColor('#0A0F1E')

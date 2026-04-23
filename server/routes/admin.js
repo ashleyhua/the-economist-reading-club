@@ -274,7 +274,7 @@ router.post('/generate-audio', adminAuth, async (req, res) => {
       headers: {
         'Authorization': `Bearer ${replicateToken}`,
         'Content-Type': 'application/json',
-        'Prefer': 'wait=60'
+        'Prefer': 'wait=120'
       },
       body: JSON.stringify({
         input: {
@@ -297,8 +297,8 @@ router.post('/generate-audio', adminAuth, async (req, res) => {
     // Poll until done
     let result = prediction;
     let attempts = 0;
-    while (result.status !== 'succeeded' && result.status !== 'failed' && attempts < 30) {
-      await new Promise(r => setTimeout(r, 2000));
+    while (result.status !== 'succeeded' && result.status !== 'failed' && attempts < 60) {
+      await new Promise(r => setTimeout(r, 3000));
       const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${result.id}`, {
         headers: { 'Authorization': `Bearer ${replicateToken}` }
       });
@@ -310,7 +310,7 @@ router.post('/generate-audio', adminAuth, async (req, res) => {
       return res.status(500).json({ error: 'Audio generation failed: ' + (result.error || 'unknown') });
     }
     if (result.status !== 'succeeded') {
-      return res.status(500).json({ error: 'Audio generation timed out' });
+      return res.status(500).json({ error: 'Audio generation timed out after 3 minutes. Try a shorter script.' });
     }
 
     const audioUrl = Array.isArray(result.output) ? result.output[0] : result.output;

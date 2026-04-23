@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import AudioGenerateButton from '../../components/AudioGenerateButton';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api, apiFetch } from '../../utils/api';
+import { api, apiFetch, resolveUrl } from '../../utils/api';
 
 export default function EditPost() {
   const { id } = useParams();
@@ -76,8 +77,14 @@ export default function EditPost() {
             <textarea value={form.audio_script || ''} onChange={e => set('audio_script', e.target.value)} rows={7} />
           </div>
           <div>
+            <AudioGenerateButton
+              script={form.audio_script}
+              onAudioGenerated={(url) => set('audio_url', url)}
+            />
+          </div>
+          <div>
             <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 6 }}>Audio file</label>
-            {form.audio_url && <audio controls src={form.audio_url} style={{ width: '100%', marginBottom: 10 }} />}
+            {form.audio_url && <audio controls src={resolveUrl(form.audio_url)} style={{ width: '100%', marginBottom: 10 }} />}
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <input type="file" accept="audio/*" onChange={e => setAudioFile(e.target.files[0])} style={{ width: 'auto', flex: 1 }} />
               <button className="btn btn-outline btn-sm" onClick={uploadAudio} disabled={!audioFile || uploadingAudio}>
