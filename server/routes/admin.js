@@ -575,7 +575,6 @@ router.put('/users/:id/revoke', adminAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-
 router.post('/parse-pdf-post', adminAuth, upload.single('pdf'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'PDF file required' });
   try {
@@ -610,7 +609,7 @@ The PDF has these sections:
 - Summary: has 一句话总结 (one sentence) and 语音稿 (audio script paragraph)
 - More Insights: Chinese deep-dive analysis
 - For Students with: 理论补充, 启发性问题与解答, 外媒与行业视角的补充
-- Original Article: full English text
+- Original Article: The VERBATIM English article text that appears under the "Original Article" heading in the PDF. This is the direct text from The Economist magazine in English. Copy it word-for-word exactly as it appears. Do NOT summarize it, do NOT translate it, do NOT paraphrase it. It starts with a capitalized word (like "THE COASTAL" or "NEVER BET") and ends with the sentence before any footnotes or references. It is several paragraphs long.
 
 CRITICAL RULES:
 - Return ONLY the raw JSON object — no markdown, no code fences, nothing before or after
@@ -619,7 +618,7 @@ CRITICAL RULES:
 - All string values must use single Chinese 「」quotes, not ASCII double quotes "
 
 Return exactly this shape (fill in values):
-{"title":"value","economist_title":"value","summary":"value","audio_script":"value","theory_explanation":"value","exam_questions":"value","other_media":"value","pdf_text":"value","country_tags":["China"]}`;
+{"title":"value","economist_title":"value","summary":"value","audio_script":"value","theory_explanation":"value","exam_questions":"value","other_media":"value","pdf_text":"<verbatim English article text copied word-for-word from the Original Article section, multiple paragraphs, NOT a summary>","country_tags":["China"]}`;
 
     const raw = await callClaude(prompt, pdfBase64);
     console.log('parse-pdf-post raw (first 400):', raw.slice(0, 400));
@@ -675,45 +674,6 @@ Return exactly this shape (fill in values):
   } catch (err) {
     console.error('parse-pdf-post error:', err.message);
     res.status(500).json({ error: 'Failed to parse PDF: ' + err.message });
-  }
-});
-
-router.post('/generate-audio-elevenlabs', adminAuth, async (req, res) => {
-  const { script } = req.body;
-  if (!script) return res.status(400).json({ error: 'Script text required' });
-  try {
-    const voicesRes = await fetch('https://api.elevenlabs.io/v1/voices', {
-      headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY }
-    });
-    const voicesData = await voicesRes.json();
-    const wenjingVoice = voicesData.voices?.find(v => v.name === 'Wenjing');
-    if (!wenjingVoice) {
-      return res.status(404).json({ error: 'Voice "Wenjing" not found in your ElevenLabs account.' });
-    }
-
-    const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${wenjingVoice.voice_id}`, {
-      method: 'POST',
-      headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text: script,
-        model_id: 'eleven_multilingual_v2',
-        voice_settings: { stability: 0.5, similarity_boost: 0.75 }
-      })
-    });
-
-    if (!ttsRes.ok) {
-      const err = await ttsRes.json().catch(() => ({}));
-      return res.status(500).json({ error: 'ElevenLabs error: ' + (err.detail?.message || ttsRes.status) });
-    }
-
-    const audioBuffer = Buffer.from(await ttsRes.arrayBuffer());
-    const base64 = audioBuffer.toString('base64');
-    // Return as data URL — no filesystem needed, survives deploys
-    const dataUrl = `data:audio/mpeg;base64,${base64}`;
-    res.json({ audio_url: dataUrl });
-  } catch (err) {
-    console.error('ElevenLabs error:', err);
-    res.status(500).json({ error: err.message });
   }
 });
 

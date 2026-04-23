@@ -4,7 +4,6 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { pool } = require('../db');
 const { subscriberAuth } = require('../middleware');
 
-// Get all published posts for article selection
 router.get('/articles', subscriberAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -16,48 +15,57 @@ router.get('/articles', subscriberAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Get word annotations for an article — cached in DB, generated on first request
 router.get('/annotations/:id', subscriberAuth, async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT pdf_text, word_annotations FROM posts WHERE id = $1', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Post not found' });
-
     const post = rows[0];
-
-    // Return cached annotations if they exist
     if (post.word_annotations) {
       return res.json({ annotations: JSON.parse(post.word_annotations), cached: true });
     }
+    if (!post.pdf_text) return res.status(400).json({ error: 'No article text available' });
 
-    if (!post.pdf_text) return res.status(400).json({ error: 'No article text available for this post' });
-
-    // Generate annotations with Claude
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const prompt = `Analyze the vocabulary in this article for Chinese English learners.
 
-For each UNIQUE word that is a noun, adjective, or notable/advanced verb — skip basic words like is, are, was, have, be, do, can, will, would, the, a, an, in, on, at, to, of, and, but, or, for, with, by, from, that, this, it, he, she, they, we, you, I, not, also, as, an — return a JSON object.
+    // Split long articles to avoid token limits
+    const text = post.pdf_text.slice(0, 8000);
 
-Classify each word as one of:
-- "technical": professional/specialized terms (e.g. "procurement", "GDP", "sovereignty")  
-- "opinion": words showing the author's attitude or judgment (e.g. "reckless", "remarkable", "dire")
-- "vocab": general advanced vocabulary worth learning
+    const prompt = `You are building a vocabulary learning tool for Chinese students reading English articles.
+
+Analyze this article text and return a JSON object mapping English words to their Chinese translations and types.
+
+INCLUDE these word types:
+- ALL nouns (people, places, organisations, things, concepts) — even common ones like "president", "country", "market"
+- ALL adjectives and adverbs that add meaning
+- Notable verbs beyond the most basic (include: "impose", "snarled", "brandished", "mitigate" — skip: is, are, was, were, be, have, do, can, will, would, could, should, may, might, get, go, come, see, make, put, let)
+- ALL proper nouns (country names, people names, organisation names)
+- Technical/economic/political terms with explanations
+- Opinion/attitude words with explanations
+
+SKIP only the most trivial function words: the, a, an, in, on, at, to, of, and, but, or, for, with, by, from, that, this, these, those, it, he, she, they, we, you, I, me, my, his, her, its, our, their, not, also, as, so, if, then, than, when, where, who, which, how, up, out, into, over, after, before, here, there, now, very, just, only, even, still, both, each, such, about, own, same
+
+Target: annotate at least 60% of meaningful words in the text.
 
 Article text:
-${post.pdf_text.slice(0, 6000)}
+${text}
 
-Return ONLY a valid JSON object (no markdown, no explanation) where keys are lowercase words and values are objects:
+Return ONLY a valid JSON object. Keys are lowercase words. No markdown. Example:
 {
-  "procurement": {"translation": "采购", "type": "technical", "explanation": "The process of obtaining goods or services, especially for government or military use."},
-  "reckless": {"translation": "鲁莽的", "type": "opinion", "explanation": "Showing a lack of care about danger or the consequences of one's actions."},
-  "sovereignty": {"translation": "主权", "type": "technical", "explanation": "Supreme power or authority, especially of a state."},
-  "remarkable": {"translation": "非凡的", "type": "opinion"}
+  "president": {"translation": "总统", "type": "vocab"},
+  "strait": {"translation": "海峡", "type": "technical", "explanation": "A narrow passage of water connecting two seas."},
+  "reckless": {"translation": "鲁莽的", "type": "opinion", "explanation": "Showing disregard for danger or consequences."},
+  "iran": {"translation": "伊朗", "type": "vocab"},
+  "sanctions": {"translation": "制裁", "type": "technical", "explanation": "Penalties imposed by countries to pressure another country."},
+  "snarled": {"translation": "使陷入混乱", "type": "vocab"},
+  "gargantuan": {"translation": "巨大的", "type": "vocab"},
+  "infrastructure": {"translation": "基础设施", "type": "technical", "explanation": "Basic physical systems like roads, power, and communications."}
 }
 
 Rules:
-- Only include words that appear in the article
-- "explanation" field only for technical and opinion words, not regular vocab
-- Keep translations concise (2-6 Chinese characters when possible)
-- Include 60-120 words total`;
+- Keep translations concise (2-8 Chinese characters)
+- Include "explanation" only for technical and opinion words
+- Use lowercase keys
+- Include proper nouns (country/person/org names) with their Chinese names`;
 
     const msg = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
@@ -66,11 +74,26 @@ Rules:
     });
 
     let raw = msg.content[0].text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-    const annotations = JSON.parse(raw);
 
-    // Cache in database
+    // Repair: fix newlines inside strings
+    let fixed = '';
+    let inStr = false, esc = false;
+    for (let i = 0; i < raw.length; i++) {
+      const c = raw[i];
+      if (esc) { fixed += c; esc = false; continue; }
+      if (c === '\\') { fixed += c; esc = true; continue; }
+      if (c === '"') { inStr = !inStr; fixed += c; continue; }
+      if (inStr && c === '\n') { fixed += '\\n'; continue; }
+      fixed += c;
+    }
+
+    // Extract JSON object
+    const start = fixed.indexOf('{');
+    const end = fixed.lastIndexOf('}');
+    if (start === -1 || end === -1) throw new Error('No JSON object in response');
+    const annotations = JSON.parse(fixed.slice(start, end + 1));
+
     await pool.query('UPDATE posts SET word_annotations = $1 WHERE id = $2', [JSON.stringify(annotations), req.params.id]);
-
     res.json({ annotations, cached: false });
   } catch (err) {
     console.error('Annotation error:', err);
@@ -78,7 +101,6 @@ Rules:
   }
 });
 
-// Get single post article text
 router.get('/article/:id', subscriberAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
