@@ -53,6 +53,21 @@ function loadScript(src) {
   });
 }
 
+// Wait until an element has non-zero dimensions, with a timeout fallback
+function waitForDimensions(el, timeout = 3000) {
+  return new Promise((resolve) => {
+    if (el.clientWidth > 0 && el.clientHeight > 0) { resolve(); return; }
+    const deadline = Date.now() + timeout;
+    const ro = new ResizeObserver(() => {
+      if (el.clientWidth > 0 && el.clientHeight > 0) { ro.disconnect(); resolve(); }
+      else if (Date.now() > deadline) { ro.disconnect(); resolve(); }
+    });
+    ro.observe(el);
+    // Also resolve on timeout regardless
+    setTimeout(() => { ro.disconnect(); resolve(); }, timeout);
+  });
+}
+
 function ProfileContent({ profile }) {
   const [section, setSection] = useState('overview');
   const btn = (id, label) => (
@@ -236,7 +251,6 @@ export default function Globe() {
     api.get('/posts/meta/countries').then(counts => {
       setCountryCounts(counts);
       countryCountsRef.current = counts;
-      // Update dots if globe already loaded
       if (globeRef.current) globeRef.current.pointsData(buildPoints(counts));
     }).catch(() => {});
     api.get('/posts?limit=200').then(d => { allPostsRef.current = d.posts || []; }).catch(() => {});
@@ -266,9 +280,10 @@ export default function Globe() {
 
   useEffect(() => {
     let cancelled = false;
+    let resizeObserver = null;
+
     async function init() {
       try {
-        // Use specific older versions known to work as UMD globals
         await loadScript('https://cdn.jsdelivr.net/npm/globe.gl@2.24.2/dist/globe.gl.min.js');
         if (cancelled || !containerRef.current) return;
 
@@ -279,42 +294,82 @@ export default function Globe() {
         await loadScript('https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js');
         if (cancelled || !containerRef.current) return;
 
+        // FIX: Wait until the container actually has dimensions before creating
+        // the WebGL canvas. On desktop, the container may still be 0×0 at this
+        // point if the component mounts before the browser completes layout.
+        await waitForDimensions(containerRef.current);
+        if (cancelled || !containerRef.current) return;
+
         const countries = window.topojson.feature(topo, topo.objects.countries);
         const GlobeGL = window.Globe || window.GlobeGL;
         if (!GlobeGL) throw new Error('Globe library not found');
 
+        // FIX: Read dimensions after waiting, with sane fallbacks.
         const w = containerRef.current.clientWidth || window.innerWidth;
-        const h = containerRef.current.clientHeight || 400;
+        const h = containerRef.current.clientHeight || (window.innerHeight - 63);
 
-        const globe = GlobeGL()(containerRef.current)
-          .width(w).height(h)
-          .backgroundColor('#0A0F1E')
-          .globeImageUrl('https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-night.jpg')
-          .polygonsData(countries.features)
-          .polygonCapColor(() => 'rgba(255,255,255,0.04)')
-          .polygonSideColor(() => 'rgba(255,255,255,0.02)')
-          .polygonStrokeColor(() => 'rgba(255,255,255,0.12)')
-          .polygonLabel(({ properties: p }) => `<div style="background:rgba(0,0,0,0.8);color:#fff;padding:5px 10px;border-radius:4px;font-size:12px">${p?.NAME || p?.name || ''}</div>`)
-          .onPolygonClick(({ properties: p }) => { const n = p?.NAME || p?.name; if (n) showCountryRef.current(n); })
-          .pointsData(buildPoints())
-          .pointLat('lat').pointLng('lng')
-          .pointAltitude(d => d.hasArticles ? 0.02 : 0.005)
-          .pointColor(d => d.hasArticles ? '#FF3333' : 'rgba(255,255,255,0.2)')
-          .pointRadius(d => d.hasArticles ? 0.5 + Math.min(d.count * 0.1, 0.8) : 0.25)
-          .pointResolution(8)
-          .pointLabel(d => `<div style="background:rgba(0,0,0,0.85);color:#fff;padding:6px 12px;border-radius:6px;font-size:13px"><b>${d.country}</b>${d.count > 0 ? `<br/>${d.count} article${d.count !== 1 ? 's' : ''}` : ''}</div>`)
-          .onPointClick(d => { if (d?.country) showCountryRef.current(d.country); });
+        // FIX: Patch getContext on a temporary canvas to inject WebGL attributes
+        // (powerPreference, failIfMajorPerformanceCaveat=false) before globe.gl
+        // creates its own canvas. This prevents "Error creating WebGL context"
+        // on desktop GPUs that default to high-power mode or have strict contexts.
+        const _origGetContext = HTMLCanvasElement.prototype.getContext;
+        HTMLCanvasElement.prototype.getContext = function (type, attrs) {
+          if (type === 'webgl' || type === 'webgl2') {
+            attrs = {
+              alpha: true,
+              antialias: true,
+              powerPreference: 'default',
+              failIfMajorPerformanceCaveat: false,
+              preserveDrawingBuffer: false,
+              ...attrs,
+            };
+          }
+          return _origGetContext.call(this, type, attrs);
+        };
+
+        let globe;
+        try {
+          globe = GlobeGL()(containerRef.current)
+            .width(w).height(h)
+            .backgroundColor('#0A0F1E')
+            .globeImageUrl('https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-night.jpg')
+            .polygonsData(countries.features)
+            .polygonCapColor(() => 'rgba(255,255,255,0.04)')
+            .polygonSideColor(() => 'rgba(255,255,255,0.02)')
+            .polygonStrokeColor(() => 'rgba(255,255,255,0.12)')
+            .polygonLabel(({ properties: p }) => `<div style="background:rgba(0,0,0,0.8);color:#fff;padding:5px 10px;border-radius:4px;font-size:12px">${p?.NAME || p?.name || ''}</div>`)
+            .onPolygonClick(({ properties: p }) => { const n = p?.NAME || p?.name; if (n) showCountryRef.current(n); })
+            .pointsData(buildPoints())
+            .pointLat('lat').pointLng('lng')
+            .pointAltitude(d => d.hasArticles ? 0.02 : 0.005)
+            .pointColor(d => d.hasArticles ? '#FF3333' : 'rgba(255,255,255,0.2)')
+            .pointRadius(d => d.hasArticles ? 0.5 + Math.min(d.count * 0.1, 0.8) : 0.25)
+            .pointResolution(8)
+            .pointLabel(d => `<div style="background:rgba(0,0,0,0.85);color:#fff;padding:6px 12px;border-radius:6px;font-size:13px"><b>${d.country}</b>${d.count > 0 ? `<br/>${d.count} article${d.count !== 1 ? 's' : ''}` : ''}</div>`)
+            .onPointClick(d => { if (d?.country) showCountryRef.current(d.country); });
+        } finally {
+          // FIX: Always restore the original getContext, even if globe init throws.
+          HTMLCanvasElement.prototype.getContext = _origGetContext;
+        }
 
         globeRef.current = globe;
 
-        // Update points again after a delay in case country counts loaded after globe init
         setTimeout(() => {
           if (globeRef.current) globeRef.current.pointsData(buildPoints());
         }, 1000);
 
-        window.addEventListener('resize', () => {
-          if (containerRef.current) globe.width(containerRef.current.clientWidth).height(containerRef.current.clientHeight);
+        // FIX: Use ResizeObserver instead of window resize so the globe
+        // responds to container size changes correctly on all screen sizes.
+        resizeObserver = new ResizeObserver(entries => {
+          for (const entry of entries) {
+            const { width, height } = entry.contentRect;
+            if (width > 0 && height > 0 && globeRef.current) {
+              globeRef.current.width(width).height(height);
+            }
+          }
         });
+        resizeObserver.observe(containerRef.current);
+
         setLoading(false);
       } catch (err) {
         console.error('Globe error:', err);
@@ -322,10 +377,12 @@ export default function Globe() {
       }
     }
     init();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (resizeObserver) resizeObserver.disconnect();
+    };
   }, []);
 
-  // Also update when countryCounts changes
   useEffect(() => {
     if (globeRef.current) globeRef.current.pointsData(buildPoints(countryCounts));
   }, [countryCounts]);
