@@ -23,7 +23,7 @@ export default function AudioGenerateButton({ script, onAudioGenerated }) {
     setError('');
     setAudioUrl('');
     try {
-      const data = await apiFetch('/admin/generate-audio-elevenlabs', {
+      const data = await apiFetch('/admin/generate-audio', {
         method: 'POST',
         body: JSON.stringify({ script }),
       });
