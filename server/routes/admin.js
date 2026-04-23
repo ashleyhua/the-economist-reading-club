@@ -281,7 +281,7 @@ router.post('/generate-audio', adminAuth, async (req, res) => {
       body: JSON.stringify({
         input: {
           text: script,
-          language: 'zh',
+          language: 'Chinese',
           mode: 'voice_clone',
           reference_audio: referenceAudioUrl,
           style_instruction: 'energetic tone'
