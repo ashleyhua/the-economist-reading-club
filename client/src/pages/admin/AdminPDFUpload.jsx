@@ -186,11 +186,6 @@ export default function AdminPDFUpload() {
             <Field label="Summary (一句话总结)" value={content.summary} onChange={v => setField('summary', v)} rows={2} />
             <Field label="Audio Script (语音稿)" value={content.audio_script} onChange={v => setField('audio_script', v)} rows={6} />
             <AudioGenerateButton script={content.audio_script} onAudioGenerated={url => setField('audio_url', url)} />
-            {content.audio_url && (
-              <div style={{ marginTop: 10, marginBottom: 16 }}>
-                <audio controls src={content.audio_url} style={{ width: '100%' }} />
-              </div>
-            )}
             <Field label="More Insights (深度分析)" value={content.theory_explanation} onChange={v => setField('theory_explanation', v)} rows={8} />
             <Field label="Exam Questions (启发性问题)" value={content.exam_questions} onChange={v => setField('exam_questions', v)} rows={8} />
             <Field label="Other Media Perspectives (外媒视角)" value={content.other_media} onChange={v => setField('other_media', v)} rows={8} />
