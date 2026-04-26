@@ -456,7 +456,33 @@ router.post('/parse-pdf-post', adminAuth, upload.single('pdf'), async (req, res)
       titleFromFilename = filenameParts[filenameParts.length - 1].trim();
     }
     console.log('Title from filename:', titleFromFilename);
-    const prompt = `This PDF is an Economist article analysis. Extract the sections and return a JSON object.\n\nThe PDF has these sections:\n- Title line like "经济学人｜MMDD｜Chinese title" — the title is the THIRD part after splitting by ｜\n- Summary: has 一句话总结 (one sentence) and 语音稿 (audio script paragraph)\n- More Insights: Chinese deep-dive analysis\n- For Students with: 理论补充, 启发性问题与解答, 外媒与行业视角的补充\n- Original Article: The VERBATIM English article text. Copy it word-for-word. Do NOT summarize.\n\nCRITICAL RULES:\n- Return ONLY the raw JSON object\n- Do NOT use double quote characters " inside string values — use 「」instead\n- Every string value must be on ONE LINE — use \\n instead of real line breaks\n\nReturn exactly this shape:\n{"title":"value","economist_title":"value","summary":"value","audio_script":"value","theory_explanation":"value","exam_questions":"value","other_media":"value","pdf_text":"<verbatim English article, NOT a summary>","country_tags":["China"]}`;
+    const prompt = `This PDF is an Economist article analysis. Extract what exists and generate what is missing.
+
+The PDF may contain some or all of these sections:
+- Title line like "经济学人｜MMDD｜Chinese title" — the title is the THIRD part after splitting by ｜
+- Summary: has 一句话总结 (one sentence) and 语音稿 (audio script paragraph)
+- More Insights: Chinese deep-dive analysis
+- For Students with subsections: 理论补充, 启发性问题与解答, 外媒与行业视角的补充
+- Original Article: verbatim English article text
+
+RULES FOR EACH FIELD:
+- title: extract from title line (third part after ｜)
+- economist_title: extract English title if present, otherwise translate the Chinese title to English
+- summary: extract 一句话总结 if present, otherwise write one sentence in Chinese summarizing the PDF content
+- audio_script: extract 语音稿 if present, otherwise write a natural 2-minute Chinese spoken script based on the PDF content
+- theory_explanation: extract More Insights + 理论补充 if present, otherwise write a 3-paragraph Chinese theory explanation based on the PDF topic
+- exam_questions: extract 启发性问题与解答 if present, otherwise GENERATE 5 numbered Chinese exam questions with answers based on the PDF content
+- other_media: extract 外媒与行业视角的补充 if present, otherwise write 3 paragraphs each starting with 【Outlet】：covering different media perspectives on the topic
+- pdf_text: extract the VERBATIM English article text from the "Original Article" section word-for-word. If there is NO Original Article section, return empty string ""
+- country_tags: English country names mentioned
+
+CRITICAL RULES:
+- Return ONLY the raw JSON object, nothing else
+- Do NOT use double quote characters " inside string values — use 「」instead
+- Every string value must be on ONE LINE — use \n instead of real line breaks
+
+Return exactly this shape:
+{"title":"value","economist_title":"value","summary":"value","audio_script":"value","theory_explanation":"value","exam_questions":"value","other_media":"value","pdf_text":"","country_tags":["China"]}`;
     const raw = await callClaude(prompt, pdfBase64);
     console.log('parse-pdf-post raw (first 400):', raw.slice(0, 400));
     let text = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
