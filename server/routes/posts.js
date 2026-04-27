@@ -3,7 +3,7 @@ const router = express.Router();
 const { pool } = require('../db');
 const { subscriberAuth } = require('../middleware');
 
-// Get published posts (paginated)
+// Feed — never load heavy columns (audio_url is base64, can be 5-8MB per post)
 router.get('/', subscriberAuth, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -12,16 +12,16 @@ router.get('/', subscriberAuth, async (req, res) => {
     const country = req.query.country;
 
     let query, countQuery, params;
+    const lightCols = `id, title, economist_title, summary, country_tags, published_at, created_at,
+      CASE WHEN audio_url IS NOT NULL THEN true ELSE false END as has_audio`;
 
     if (country) {
-      query = `SELECT id, title, economist_title, summary, audio_url, country_tags, published_at
-               FROM posts WHERE is_published = TRUE AND $1 = ANY(country_tags)
+      query = `SELECT ${lightCols} FROM posts WHERE is_published = TRUE AND $1 = ANY(country_tags)
                ORDER BY published_at DESC LIMIT $2 OFFSET $3`;
       countQuery = `SELECT COUNT(*) FROM posts WHERE is_published = TRUE AND $1 = ANY(country_tags)`;
       params = [country, limit, offset];
     } else {
-      query = `SELECT id, title, economist_title, summary, audio_url, country_tags, published_at
-               FROM posts WHERE is_published = TRUE
+      query = `SELECT ${lightCols} FROM posts WHERE is_published = TRUE
                ORDER BY published_at DESC LIMIT $1 OFFSET $2`;
       countQuery = `SELECT COUNT(*) FROM posts WHERE is_published = TRUE`;
       params = [limit, offset];
@@ -37,7 +37,7 @@ router.get('/', subscriberAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Get country tag counts
+// Country counts for globe
 router.get('/meta/countries', subscriberAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -51,7 +51,7 @@ router.get('/meta/countries', subscriberAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Get single post
+// Single post — load everything including audio_url
 router.get('/:id', subscriberAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
