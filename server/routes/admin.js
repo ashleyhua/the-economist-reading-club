@@ -228,6 +228,8 @@ router.post('/generate', adminAuth, upload.single('pdf'), async (req, res) => {
   }
   try {
     const html = fs.readFileSync(req.file.path, 'utf8');
+    // Delete temp file immediately after reading
+    try { fs.unlinkSync(req.file.path); } catch(e) {}
     const articleText = extractArticleFromHtml(html);
     console.log('HTML extraction:', articleText.length, 'chars');
     if (articleText.length < 100) {
@@ -330,12 +332,9 @@ router.get('/generate-audio-status/:id', adminAuth, async (req, res) => {
     if (result.status === 'succeeded') {
       const audioUrl = Array.isArray(result.output) ? result.output[0] : result.output;
       if (!audioUrl) return res.status(500).json({ error: 'No audio URL in response' });
-
-      // Download and convert to base64 data URL so it survives Render deploys
-      const audioRes = await fetch(audioUrl);
-      const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
-      const base64 = audioBuffer.toString('base64');
-      return res.json({ status: 'succeeded', audio_url: `data:audio/wav;base64,${base64}` });
+      // Return the Replicate URL directly — no server-side download needed
+      // Frontend will fetch and convert to base64 before saving to DB
+      return res.json({ status: 'succeeded', audio_url: audioUrl });
     }
 
     // Still processing — return status for frontend to keep polling
@@ -390,7 +389,13 @@ router.put('/posts/:id', adminAuth, async (req, res) => {
 
 router.get('/posts', adminAuth, async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM posts ORDER BY created_at DESC');
+    // Exclude heavy columns (pdf_text, word_annotations, audio_url, theory_explanation etc.)
+    // from list view to prevent OOM — full data loaded only in single post GET
+    const { rows } = await pool.query(
+      `SELECT id, title, economist_title, summary, audio_script, country_tags,
+              is_published, published_at, created_at
+       FROM posts ORDER BY created_at DESC`
+    );
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -438,8 +443,23 @@ router.post('/parse-pdf-post', adminAuth, upload.single('pdf'), async (req, res)
   if (!req.file) return res.status(400).json({ error: 'PDF file required' });
   try {
     const pdfBuffer = fs.readFileSync(req.file.path);
-    const pdfBase64 = pdfBuffer.toString('base64');
     const filename = req.file.originalname || '';
+    
+    // Extract text from PDF using pdf-parse instead of sending base64 to Claude
+    // This avoids loading the full PDF into Claude's context (saves ~300MB RAM)
+    let pdfText = '';
+    if (pdfParse) {
+      try {
+        const parsed = await pdfParse(pdfBuffer);
+        pdfText = parsed.text || '';
+        console.log('PDF text extracted:', pdfText.length, 'chars');
+      } catch (e) {
+        console.warn('pdf-parse failed:', e.message);
+      }
+    }
+    
+    // Free the buffer from memory immediately after extraction
+    const pdfBufferFreed = null;
     const dateMatch = filename.match(/(\d{2})(\d{2})/);
     let publishedAt = '';
     if (dateMatch) {
@@ -484,7 +504,9 @@ CRITICAL RULES:
 Return exactly this shape:
 {"title":"value","economist_title":"value","summary":"value","audio_script":"value","theory_explanation":"value","exam_questions":"value","other_media":"value","pdf_text":"","country_tags":["China"]}\n(Only use country names from the allowed list above)`;
 
-    const raw = await callClaude(prompt, pdfBase64);
+    // Send extracted text to Claude instead of base64 PDF (much lower memory usage)
+    const promptWithText = prompt + '\n\nHere is the extracted PDF text:\n' + pdfText.slice(0, 12000);
+    const raw = await callClaude(promptWithText);
     console.log('parse-pdf-post raw (first 400):', raw.slice(0, 400));
     let text = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
     const start = text.indexOf('{');
