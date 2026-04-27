@@ -12,8 +12,20 @@ async function apiFetch(path, options = {}) {
   return data;
 }
 
+// Convert a URL to base64 data URL in the browser (no server memory used)
+async function urlToBase64(url) {
+  const res = await fetch(url);
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result); // result is data:audio/...;base64,...
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 export default function AudioGenerateButton({ script, onAudioGenerated }) {
-  const [status, setStatus] = useState('idle'); // idle | starting | processing | done | error
+  const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
   const [audioUrl, setAudioUrl] = useState('');
   const [elapsed, setElapsed] = useState(0);
@@ -26,16 +38,15 @@ export default function AudioGenerateButton({ script, onAudioGenerated }) {
     setElapsed(0);
 
     try {
-      // Step 1: start the prediction — returns immediately with a prediction_id
+      // Step 1: start prediction on server — returns prediction_id immediately
       const { prediction_id } = await apiFetch('/admin/generate-audio', {
         method: 'POST',
         body: JSON.stringify({ script }),
       });
-
       if (!prediction_id) throw new Error('No prediction ID returned');
       setStatus('processing');
 
-      // Step 2: poll every 4 seconds until done (up to 10 minutes)
+      // Step 2: poll every 4 seconds until done
       const startTime = Date.now();
       for (let i = 0; i < 150; i++) {
         await new Promise(r => setTimeout(r, 4000));
@@ -44,8 +55,12 @@ export default function AudioGenerateButton({ script, onAudioGenerated }) {
         const result = await apiFetch(`/admin/generate-audio-status/${prediction_id}`);
 
         if (result.status === 'succeeded' && result.audio_url) {
-          setAudioUrl(result.audio_url);
-          onAudioGenerated(result.audio_url);
+          setStatus('converting');
+          // Step 3: convert to base64 IN THE BROWSER (not the server)
+          // This keeps server memory free — browser handles the conversion
+          const dataUrl = await urlToBase64(result.audio_url);
+          setAudioUrl(dataUrl);
+          onAudioGenerated(dataUrl);
           setStatus('done');
           return;
         }
@@ -53,7 +68,6 @@ export default function AudioGenerateButton({ script, onAudioGenerated }) {
         if (result.status === 'failed') {
           throw new Error(result.error || 'Audio generation failed on Replicate');
         }
-        // still 'starting' or 'processing' — keep polling
       }
       throw new Error('Timed out after 10 minutes');
     } catch (err) {
@@ -63,7 +77,7 @@ export default function AudioGenerateButton({ script, onAudioGenerated }) {
     }
   }
 
-  const isGenerating = status === 'starting' || status === 'processing';
+  const isGenerating = status === 'starting' || status === 'processing' || status === 'converting';
 
   return (
     <div style={{ marginTop: 8 }}>
@@ -84,6 +98,7 @@ export default function AudioGenerateButton({ script, onAudioGenerated }) {
         )}
         {status === 'starting' && 'Starting…'}
         {status === 'processing' && `Generating… ${elapsed}s`}
+        {status === 'converting' && 'Saving audio…'}
         {status === 'done' && 'Audio ready ✓'}
         {(status === 'idle' || status === 'error') && 'Generate Audio from Script'}
       </button>
