@@ -13,9 +13,6 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
   : [];
 
-// Compress all responses — reduces bandwidth and speeds up large JSON responses
-app.use(compression());
-
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
@@ -28,9 +25,12 @@ app.use(cors({
   credentials: true,
 }));
 
+// Compress all responses — reduces bandwidth and speeds up large JSON responses
+app.use(compression());
+
 // Reduce JSON body limit from 50mb to 10mb — large enough for audio base64, prevents abuse
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
