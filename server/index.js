@@ -9,6 +9,16 @@ const { initDB } = require('./db');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Force garbage collection every 3 minutes to free memory from heavy operations
+if (global.gc) {
+  setInterval(() => {
+    const before = process.memoryUsage().heapUsed;
+    global.gc();
+    const after = process.memoryUsage().heapUsed;
+    console.log(`GC: freed ${Math.round((before - after) / 1024 / 1024)}MB, heap now ${Math.round(after / 1024 / 1024)}MB`);
+  }, 3 * 60 * 1000);
+}
+
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
   : [];
