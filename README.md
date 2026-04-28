@@ -1,6 +1,6 @@
 # The Economist Reading Club
 
-A full-stack subscription web app that curates The Economist for Chinese high school students. Teachers upload articles and AI generates summaries, theory explanations, exam questions, and audio briefings in the teacher's cloned voice.
+A full-stack subscription web app that curates The Economist for Chinese high school students. The teacher uploads articles and AI generates summaries, theory explanations, exam questions, and audio briefings in the teacher's cloned voice.
 
 Live at [theeconomistreadingclub.com](https://theeconomistreadingclub.com)
 
